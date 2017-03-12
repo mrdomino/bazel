@@ -206,10 +206,11 @@ static int CreateTarget(const char *path, bool is_directory) {
     }
   }
 
-  // Create the parent directory.
-  if (CreateTarget(dirname(strdupa(path)), true) < 0) {
-    DIE("CreateTarget(%s, true)", dirname(strdupa(path)));
+  char *path2 = strdup(path);
+  if (CreateTarget(dirname(path2), true) < 0) {
+    DIE("CreateTarget(%s, true)", dirname(path2));
   }
+  free(path2);
 
   if (is_directory) {
     if (mkdir(path, 0755) < 0) {
