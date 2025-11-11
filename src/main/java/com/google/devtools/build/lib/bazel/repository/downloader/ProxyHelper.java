@@ -182,11 +182,36 @@ public class ProxyHelper {
       // We need to make sure the proxy password is not url encoded; some special characters in
       // proxy passwords require url encoding for shells and other tools to properly consume.
       final String decodedPassword = URLDecoder.decode(password, "UTF-8");
+
+      // Enable Basic authentication for CONNECT requests (tunneling through HTTP proxy for HTTPS).
+      // By default, Java disables Basic auth for CONNECT to prevent credential leakage, but this
+      // prevents legitimate proxy authentication from working. We need to explicitly enable it.
+      String tunnelingSchemes = System.getProperty("jdk.http.auth.tunneling.disabledSchemes", "");
+      if (tunnelingSchemes.contains("Basic")) {
+        // Remove "Basic" from the disabled schemes to enable proxy authentication for CONNECT
+        String updatedSchemes = tunnelingSchemes.replaceAll("Basic,?\\s*|,?\\s*Basic", "").trim();
+        // Remove trailing/leading commas and normalize
+        updatedSchemes = updatedSchemes.replaceAll("^,+|,+$", "").trim();
+        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", updatedSchemes);
+      }
+
+      final String proxyHostname = hostname;
+      final int proxyPort = port;
+
       Authenticator.setDefault(
           new Authenticator() {
             @Override
             public PasswordAuthentication getPasswordAuthentication() {
-              return new PasswordAuthentication(username, decodedPassword.toCharArray());
+              // Only return credentials for proxy authentication requests to the correct proxy
+              if (getRequestorType() == RequestorType.PROXY) {
+                String requestingHost = getRequestingHost();
+                int requestingPort = getRequestingPort();
+                // Verify this is our proxy requesting authentication
+                if (proxyHostname.equals(requestingHost) && proxyPort == requestingPort) {
+                  return new PasswordAuthentication(username, decodedPassword.toCharArray());
+                }
+              }
+              return null;
             }
           });
     }
